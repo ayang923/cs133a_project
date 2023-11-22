@@ -66,13 +66,13 @@ def generate_launch_description():
         arguments  = ['-d', rvizcfg],
         on_exit    = Shutdown())
     
-    # # Configure a node for the GUI
-    # node_gui = Node(
-    #     name       = 'gui', 
-    #     package    = 'joint_state_publisher_gui',
-    #     executable = 'joint_state_publisher_gui',
-    #     output     = 'screen',
-    #     on_exit    = Shutdown())
+    # Configure a node for the GUI
+    node_trajectory = Node(
+        name       = 'trajectory', 
+        package    = 'cs133a_project',
+        executable = 'squat',
+        output     = 'screen',
+        )
 
 
     ######################################################################
@@ -81,5 +81,6 @@ def generate_launch_description():
         # Start the robot_state_publisher, RVIZ, and the GUI.
         node_robot_state_publisher,
         node_rviz,
+        node_trajectory,
     ])
  
