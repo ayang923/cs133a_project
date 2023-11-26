@@ -1,12 +1,12 @@
 <?xml version="1.0" ?>
 <robot name="drc_skeleton">
-    <link name="head">
-        <inertial>
-            <mass value="3.751" />
-            <origin xyz="-0.0481 0 0.0457" rpy="0 -0 0" />
-            <inertia ixx="0.0108" ixy="-0.0001" ixz="-0.0007" iyy="0.0182" iyz="-0.0003" izz="0.0108" />
-        </inertial>
-    </link>
+  <link name="head">
+      <inertial>
+          <mass value="3.751" />
+          <origin xyz="-0.0481 0 0.0457" rpy="0 -0 0" />
+          <inertia ixx="0.0108" ixy="-0.0001" ixz="-0.0007" iyy="0.0182" iyz="-0.0003" izz="0.0108" />
+      </inertial>
+  </link>
   <link name="l_clav">
     <inertial>
       <mass value="3.45"/>
@@ -32,12 +32,14 @@
     </inertial>
     <visual>
       <geometry>
-        <mesh filename="package://cs133a_project/meshes_unplugged/l_foot.dae"/>
+        <!-- <mesh filename="package://cs133a_project/meshes_unplugged/l_foot.dae"/> -->
+        <mesh filename="package://cs133a_project/meshes/FlipperCAD.STL"/>
       </geometry>
     </visual>
     <collision>
       <geometry>
-        <mesh filename="package://cs133a_project/meshes_unplugged/l_foot.dae"/>
+        <!-- <mesh filename="package://cs133a_project/meshes_unplugged/l_foot.dae"/> -->
+        <mesh filename="package://cs133a_project/meshes/FlipperCAD.STL"/>
       </geometry>
     </collision>
   </link>
@@ -294,12 +296,14 @@
     </inertial>
     <visual>
       <geometry>
-        <mesh filename="package://cs133a_project/meshes_unplugged/r_foot.dae"/>
+        <!-- <mesh filename="package://cs133a_project/meshes_unplugged/r_foot.dae"/> -->
+        <mesh filename="package://cs133a_project/meshes/FlipperCAD.STL"/>
       </geometry>
     </visual>
     <collision>
       <geometry>
-        <mesh filename="package://cs133a_project/meshes_unplugged/r_foot.dae"/>
+        <!-- <mesh filename="package://cs133a_project/meshes_unplugged/r_foot.dae"/> -->
+        <mesh filename="package://cs133a_project/meshes/FlipperCAD.STL"/>
       </geometry>
     </collision>
   </link>
