@@ -20,6 +20,15 @@
       Python List 1x3:  <origin> "xyz"  Vector of Positions
       Python List 1x3:  <origin> "rpy"  Vector of Euler Angles
 
+   as well as the ROS message elements (types):
+
+      ROS Message  Point        Point (x,y,z) in space
+      ROS Message  Vector3      3D (x,y,z) vector
+      ROS Message  Quaternion   Quaternion
+      ROS Message  Pose         Point + Quaternion -> 3D Rigid Body definition
+      ROS Message  Transform    Vector3 + Quaterion -> Frame to Frame shift
+
+
    The Helper functions are:
 
    Cross Product:   cross(e1,e2)    Cross product of two 3x1 vectors
@@ -52,11 +61,25 @@
    URDF Elements    T_from_URDF_origin(origin)   Construct transform
                     e_from_URDF_axis(axis)       Construct axis vector
 
+   From ROS Msgs    p_from_Point(point)             Create p from a Point
+                    p_from_Vector3(vector3)         Create p from a Vector3
+                    R_from_Quaternion(quaternion)   Create R from a Quaternion
+                    T_from_Pose(pose)               Create T from a Pose
+                    T_from_Transform(transform)     Create T from a Transform
+
+   To ROS Msgs      Point_from_p(p)         Create a Point from p
+                    Vector3_from_p(p)       Create a Vector3 from p
+                    Quaternion_from_R(R)    Create a Quaternion from R
+                    Pose_from_T(T)          Create a Pose from T
+                    Transform_from_T(T)     Create a Transform from T
 '''
 
 import numpy as np
 
-from urdf_parser_py.urdf import Robot
+from urdf_parser_py.urdf        import Robot
+from geometry_msgs.msg          import Point, Vector3
+from geometry_msgs.msg          import Quaternion
+from geometry_msgs.msg          import Pose, Transform
 
 
 #
@@ -211,6 +234,63 @@ def T_from_URDF_origin(origin):
 def e_from_URDF_axis(axis):
     return np.array(axis).reshape((3,1))
 
+
+
+#
+#   From ROS Messages
+#
+#   Extract the info (re-organizing) from ROS message types
+#
+def p_from_Point(point):
+    return pxyz(point.x, point.y, point.z)
+
+def p_from_Vector3(vector3):
+    return pxyz(vector3.x, vector3.y, vector3.z)
+
+def quat_from_Quaternion(quaternion):
+    # Note, ROS quaternions place the w component last, while our
+    # library places the w component first.
+    return np.array([quaternion.w, quaternion.x, quaternion.y, quaternion.z])
+
+def R_from_Quaternion(quaternion):
+    return R_from_quat(quat_from_Quaternion(quaternion))
+
+def T_from_Pose(pose):
+    return T_from_Rp(R_from_Quaternion(pose.orientation),
+                     p_from_Point(pose.position))
+
+def T_from_Transform(transform):
+    return T_from_Rp(R_from_Quaternion(transform.rotation),
+                     p_from_Vector3(transform.translation))
+
+
+#
+#   To ROS Messages
+#
+#   Construct the ROS message types (re-organizing as appropriate).
+#
+def Point_from_p(p):
+    return Point(x=p[0,0], y=p[1,0], z=p[2,0])
+
+def Vector3_from_p(p):
+    return Vector3(x=p[0,0], y=p[1,0], z=p[2,0])
+
+def Quaternion_from_quat(quat):
+    # Note, ROS quaternions place the w component last, while our
+    # library places the w component first.
+    q = quat.flatten()
+    return Quaternion(x=q[1], y=q[2], z=q[3], w=q[0])
+
+def Quaternion_from_R(R):
+    return Quaternion_from_quat(quat_from_R(R))
+
+def Pose_from_T(T):
+    return Pose(position    = Point_from_p(p_from_T(T)),
+                orientation = Quaternion_from_R(R_from_T(T)))
+
+def Transform_from_T(T):
+    return Transform(translation = Vector3_from_p(p_from_T(T)),
+                     rotation    = Quaternion_from_R(R_from_T(T)))
 
 
 #

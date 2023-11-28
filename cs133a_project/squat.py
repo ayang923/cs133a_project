@@ -18,7 +18,7 @@ from math import pi, sin, cos, acos, atan2, sqrt, fmod, exp
 from scipy.linalg import diagsvd
 
 # Grab the utilities
-from cs133a_project.GeneratorNode      import GeneratorNode
+from cs133a_project.nodes      import RobotNode, BallNode
 from cs133a_project.TransformHelpers   import *
 from cs133a_project.TrajectoryUtils    import *
 
@@ -117,19 +117,17 @@ class Trajectory():
 #  Main Code
 #
 def main(args=None):
-    # Initialize ROS.
     rclpy.init(args=args)
+    ball_node = BallNode('balldemo', 100)
+    robot_node = RobotNode('generator', 100, Trajectory)
 
-    # Initialize the generator node for 100Hz udpates, using the above
-    # Trajectory class.
-    generator = GeneratorNode('generator', 100, Trajectory)
-
-    # Spin, meaning keep running (taking care of the timer callbacks
-    # and message passing), until interrupted or the trajectory ends.
-    generator.spin()
+    while rclpy.ok():
+            rclpy.spin_once(robot_node)  # Spinning node_a
+            rclpy.spin_once(ball_node)  # Spinning node_b
 
     # Shutdown the node and ROS.
-    generator.shutdown()
+    ball_node.shutdown()
+    robot_node.shutdown()
     rclpy.shutdown()
 
 if __name__ == "__main__":

@@ -30,6 +30,18 @@ from asyncio            import Future
 from rclpy.node         import Node
 from sensor_msgs.msg    import JointState
 
+from tf2_ros                    import TransformBroadcaster
+from geometry_msgs.msg          import TransformStamped
+
+from rclpy.node                 import Node
+from rclpy.qos                  import QoSProfile, DurabilityPolicy
+from rclpy.time                 import Duration
+from geometry_msgs.msg          import Point, Vector3, Quaternion
+from std_msgs.msg               import ColorRGBA
+from visualization_msgs.msg     import Marker
+from visualization_msgs.msg     import MarkerArray
+
+from cs133a_project.TransformHelpers import *
 
 #
 #   Trajectory Generator Node Class
@@ -42,11 +54,14 @@ from sensor_msgs.msg    import JointState
 #   Take the node name, the update frequency, and the trajectory class
 #   as arguments.
 #
-class GeneratorNode(Node):
+class RobotNode(Node):
     # Initialization.
     def __init__(self, name, rate, Trajectory):
         # Initialize the node, naming it as specified
         super().__init__(name)
+
+        # Initialize the transform broadcaster
+        self.broadcaster = TransformBroadcaster(self)
 
         # Set up a trajectory.
         self.trajectory = Trajectory(self)
@@ -105,6 +120,19 @@ class GeneratorNode(Node):
         # Determine the corresponding ROS time (seconds since 1970).
         now = self.start + rclpy.time.Duration(seconds=self.t)
 
+        # Compute position/orientation of the pelvis (w.r.t. world).
+        ppelvis = pxyz(0.0, 0.5, 1.5 + 0.5 * np.sin(self.t/2))
+        Rpelvis = Rotz(np.sin(self.t))
+        Tpelvis = T_from_Rp(Rpelvis, ppelvis)
+
+        # Build up and send the Pelvis w.r.t. World Transform!
+        trans = TransformStamped()
+        trans.header.stamp    = now.to_msg()
+        trans.header.frame_id = 'world'
+        trans.child_frame_id  = 'pelvis'
+        trans.transform       = Transform_from_T(Tpelvis)
+        self.broadcaster.sendTransform(trans)
+
         # Compute the desired joint positions and velocities for this time.
         desired = self.trajectory.evaluate(self.t, self.dt)
         if desired is None:
@@ -133,3 +161,88 @@ class GeneratorNode(Node):
         cmdmsg.position     = q                 # List of joint positions
         cmdmsg.velocity     = qdot              # List of joint velocities
         self.pub.publish(cmdmsg)
+
+#
+#   Demo Node Class
+#
+class BallNode(Node):
+    # Initialization.
+    def __init__(self, name, rate):
+        # Initialize the node, naming it as specified
+        super().__init__(name)
+
+        # Prepare the publisher (latching for new subscribers).
+        quality = QoSProfile(durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                             depth=1)
+        self.pub = self.create_publisher(
+            MarkerArray, '/visualization_marker_array', quality)
+
+        # Initialize the ball position, velocity, set the acceleration.
+        self.radius = 0.1
+
+        self.p = np.array([0.0, 0.0, self.radius]).reshape((3,1))
+        self.v = np.array([1.0, 0.1,  5.0       ]).reshape((3,1))
+        self.a = np.array([0.0, 0.0, -9.81      ]).reshape((3,1))
+
+        # Create the sphere marker.
+        diam        = 2 * self.radius
+        self.marker = Marker()
+        self.marker.header.frame_id  = "world"
+        self.marker.header.stamp     = self.get_clock().now().to_msg()
+        self.marker.action           = Marker.ADD
+        self.marker.ns               = "point"
+        self.marker.id               = 1
+        self.marker.type             = Marker.SPHERE
+        self.marker.pose.orientation = Quaternion()
+        self.marker.pose.position    = Point_from_p(self.p)
+        self.marker.scale            = Vector3(x = diam, y = diam, z = diam)
+        self.marker.color            = ColorRGBA(r=1.0, g=0.0, b=0.0, a=0.8)
+        # a = 0.8 is slightly transparent!
+
+        # Create the marker array message.
+        self.mark = MarkerArray()
+        self.mark.markers.append(self.marker)
+
+        # Set up the timing so (t=0) will occur in the first update
+        # cycle (dt) from now.
+        self.dt    = 1.0 / float(rate)
+        self.t     = -self.dt
+        self.start = self.get_clock().now() + Duration(seconds=self.dt)
+
+        # Create a timer to keep calling update().
+        self.create_timer(self.dt, self.update)
+        self.get_logger().info("Running with dt of %f seconds (%fHz)" %
+                               (self.dt, rate))
+
+    # Shutdown
+    def shutdown(self):
+        # Destroy the node, including cleaning up the timer.
+        self.destroy_node()
+
+    # Update - send a new joint command every time step.
+    def update(self):
+        # To avoid any time jitter enforce a constant time step and
+        # integrate to get the current time.
+        self.t += self.dt
+
+        # Integrate the velocity, then the position.
+        self.v += self.dt * self.a
+        self.p += self.dt * self.v
+
+        # Check for a bounce - not the change in x velocity is non-physical.
+        if self.p[2,0] < self.radius:
+            self.p[2,0] = self.radius + (self.radius - self.p[2,0])
+            self.v[2,0] *= -1.0
+            self.v[0,0] *= -1.0   # Change x just for the fun of it!
+
+        # Update the ID number to create a new ball and leave the
+        # previous balls where they are.
+        #####################
+        # self.marker.id += 1
+        #####################
+
+        # Update the message and publish.
+        now = self.start + Duration(seconds=self.t)
+        self.marker.header.stamp  = now.to_msg()
+        self.marker.pose.position = Point_from_p(self.p)
+        self.pub.publish(self.mark)
