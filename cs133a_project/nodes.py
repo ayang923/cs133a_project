@@ -120,25 +120,12 @@ class RobotNode(Node):
         # Determine the corresponding ROS time (seconds since 1970).
         now = self.start + rclpy.time.Duration(seconds=self.t)
 
-        # Compute position/orientation of the pelvis (w.r.t. world).
-        ppelvis = pxyz(0.0, 0.5, 1.5 + 0.5 * np.sin(self.t/2))
-        Rpelvis = Rotz(np.sin(self.t))
-        Tpelvis = T_from_Rp(Rpelvis, ppelvis)
-
-        # Build up and send the Pelvis w.r.t. World Transform!
-        trans = TransformStamped()
-        trans.header.stamp    = now.to_msg()
-        trans.header.frame_id = 'world'
-        trans.child_frame_id  = 'pelvis'
-        trans.transform       = Transform_from_T(Tpelvis)
-        self.broadcaster.sendTransform(trans)
-
         # Compute the desired joint positions and velocities for this time.
         desired = self.trajectory.evaluate(self.t, self.dt)
         if desired is None:
             self.future.set_result("Trajectory has ended")
             return
-        (q, qdot) = desired
+        (p_world, R_world, q, qdot) = desired
 
         # Check the results.
         if not (isinstance(q, list) and isinstance(qdot, list)):
@@ -153,6 +140,17 @@ class RobotNode(Node):
         if not (isinstance(q[0], float) and isinstance(qdot[0], float)):
             self.get_logger().warn("Flatten NumPy arrays before making lists!")
             return
+        
+        # Compute position/orientation of the pelvis (w.r.t. world).
+        Tpelvis = T_from_Rp(R_world, p_world)
+
+        # Build up and send the Pelvis w.r.t. World Transform!
+        trans = TransformStamped()
+        trans.header.stamp    = now.to_msg()
+        trans.header.frame_id = 'world'
+        trans.child_frame_id  = 'pelvis'
+        trans.transform       = Transform_from_T(Tpelvis)
+        self.broadcaster.sendTransform(trans)
 
         # Build up a command message and publish.
         cmdmsg = JointState()
@@ -180,8 +178,8 @@ class BallNode(Node):
         # Initialize the ball position, velocity, set the acceleration.
         self.radius = 0.1
 
-        self.p = np.array([0.0, 0.0, self.radius]).reshape((3,1))
-        self.v = np.array([1.0, 0.1,  5.0       ]).reshape((3,1))
+        self.p = np.array([0.5, 0.0, self.radius]).reshape((3,1))
+        self.v = np.array([0.0, 0.0,  5.0       ]).reshape((3,1))
         self.a = np.array([0.0, 0.0, -9.81      ]).reshape((3,1))
 
         # Create the sphere marker.

@@ -34,6 +34,7 @@ ATLAS_JOINT_NAMES = [
 ]
 
 ATLAS_L_LEG_JOINT_NAMES = [
+    "l_leg_hpz",
     "l_leg_hpx",
     "l_leg_hpy",
     "l_leg_kny",
@@ -42,6 +43,7 @@ ATLAS_L_LEG_JOINT_NAMES = [
 ]
 
 ATLAS_R_LEG_JOINT_NAMES = [
+    "r_leg_hpz",
     "r_leg_hpx",
     "r_leg_hpy",
     "r_leg_kny",
