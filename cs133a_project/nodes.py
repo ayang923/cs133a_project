@@ -42,6 +42,7 @@ from visualization_msgs.msg     import Marker
 from visualization_msgs.msg     import MarkerArray
 
 from cs133a_project.TransformHelpers import *
+from cs133a_project.msg_utils import *
 
 #
 #   Trajectory Generator Node Class
@@ -69,6 +70,13 @@ class RobotNode(Node):
 
         # Add a publisher to send the joint commands.
         self.pub = self.create_publisher(JointState, '/joint_states', 10)
+
+        # to publish collision messages
+        self.collision_pub = self.create_publisher(
+            Pose,
+            '/collision_messages',
+            10
+        )
 
         # Wait for a connection to happen.  This isn't necessary, but
         # means we don't start until the rest of the system is ready.
@@ -174,7 +182,13 @@ class BallNode(Node):
                              depth=1)
         self.pub = self.create_publisher(
             MarkerArray, '/visualization_marker_array', quality)
-
+        
+        self.create_subscription(
+            Pose,
+            '/collision_messages',
+            self.process_collision,
+            10  # Queue size for topic 1
+        )
         # Initialize the ball position, velocity, set the acceleration.
         self.radius = 0.1
 
@@ -212,6 +226,14 @@ class BallNode(Node):
         self.get_logger().info("Running with dt of %f seconds (%fHz)" %
                                (self.dt, rate))
 
+    def process_collision(self, msg):
+        T = T_from_Pose(msg)
+        R = R_from_T(T)
+        p = p_from_T(T)
+
+        self.v = R_from_T(T) @ -self.v
+        self.p = self.p + self.v / np.linalg.norm(self.v) * self.radius
+
     # Shutdown
     def shutdown(self):
         # Destroy the node, including cleaning up the timer.
@@ -231,7 +253,6 @@ class BallNode(Node):
         if self.p[2,0] < self.radius:
             self.p[2,0] = self.radius + (self.radius - self.p[2,0])
             self.v[2,0] *= -1.0
-            self.v[0,0] *= -1.0   # Change x just for the fun of it!
 
         # Update the ID number to create a new ball and leave the
         # previous balls where they are.

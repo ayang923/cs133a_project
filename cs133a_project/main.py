@@ -25,6 +25,8 @@ from cs133a_project.TrajectoryUtils    import *
 # Grab the general fkin from HW5 P5.
 from cs133a_project.KinematicChain     import KinematicChain
 from cs133a_project.joint_info import *
+from cs133a_project.msg_utils import *
+
 
 from visualization_msgs.msg     import Marker
 from visualization_msgs.msg     import MarkerArray
@@ -66,17 +68,19 @@ class Trajectory():
         # trajectory info
         self.T = None
         self.xf_l_leg = None
-        self.xf_l_leg_height = 0.1
+        self.xf_l_leg_height = 0.3
 
         self.q = np.vstack((self.q0, self.q0))
         self.pd = self.x0_l_leg
         self.Rd = Reye()
 
-        #self.x_l_leg = self.x0_l_leg
+        # collision detection
+        self.collision = False
 
     def process_ball(self, msg):
         if msg.markers:
             ball = msg.markers[0]
+            radius = p_from_Vector3(ball.scale)[0, 0] / 2
             new_ball_p = p_from_Point(ball.pose.position)
             new_ball_t = ball.header.stamp.sec + ball.header.stamp.nanosec*10**-9
             if self.ball_p is not None:
@@ -91,10 +95,18 @@ class Trajectory():
 
                 self.xf_l_leg = self.R_world.T @ (ball_final - self.p_world)
 
-            # ball wrt to pelvis
-            # pelvis_ball_p = self.R_world.T @ (new_ball_p - self.p_world)
-            # print("ball:", pelvis_ball_p)
-            # print("foot:", self.l_leg_chain.fkin(self.q)[0])
+            # ball wrt pelvis
+            pelvis_ball_p = self.R_world.T @ (new_ball_p - self.p_world)
+
+            if ((pelvis_ball_p <= self.pd + radius) & (self.pd - radius <= pelvis_ball_p)).all():
+                if not self.collision:
+                    self.node.collision_pub.publish(Pose_from_T(T_from_Rp(self.R_world @ self.Rd, self.p_world  + self.R_world @ self.pd)))
+                    self.collision = True
+                    print('collision')
+            else:
+                self.collision = False
+            # if (self.pd - radius <= pelvis_ball_p <= self.pd + radius):
+            #     print("collision")
             
 
     # Declare the joint names.
@@ -169,7 +181,7 @@ class Trajectory():
 #
 def main(args=None):
     rclpy.init(args=args)
-    ball_node = BallNode('balldemo', 100)
+    ball_node = BallNode('balldemo', 50)
     robot_node = RobotNode('generator', 100, Trajectory)
 
     while rclpy.ok():
