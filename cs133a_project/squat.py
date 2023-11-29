@@ -35,8 +35,8 @@ class Trajectory():
         # Set up the kinematic chain object.
         #self.chain = KinematicChain(node, 'world', 'tip', self.jointnames())
 
-        self.l_leg_chain = KinematicChain(node, 'l_uglut', 'l_foot', ATLAS_L_LEG_JOINT_NAMES)
-        self.r_leg_chain = KinematicChain(node, 'r_uglut', 'r_foot', ATLAS_R_LEG_JOINT_NAMES)
+        self.l_leg_chain = KinematicChain(node, 'pelvis', 'l_foot', ATLAS_L_LEG_JOINT_NAMES)
+        self.r_leg_chain = KinematicChain(node, 'pelvis', 'r_foot', ATLAS_R_LEG_JOINT_NAMES)
 
         self.q0 = np.zeros((len(ATLAS_L_LEG_JOINT_NAMES), 1))
 
@@ -110,7 +110,7 @@ class Trajectory():
 
         q = np.array([q_dict[joint_name] if joint_name in q_dict else 0 for joint_name in self.jointnames()])
         qdot = np.array([qdot_dict[joint_name] if joint_name in q_dict else 0 for joint_name in self.jointnames()])
-        return (q.flatten().tolist(), qdot.flatten().tolist())
+        return (np.zeros((3, 1)), Reye(), q.flatten().tolist(), qdot.flatten().tolist())
 
 
 #

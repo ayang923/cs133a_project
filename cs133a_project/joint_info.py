@@ -1,4 +1,4 @@
-from urdf_parser_py.urdf import URDF
+import numpy as np
 
 ATLAS_JOINT_NAMES = [
     "back_bkx",
@@ -50,3 +50,5 @@ ATLAS_R_LEG_JOINT_NAMES = [
     "r_leg_aky",
     "r_leg_akx",
 ]
+
+ATLAS_PADDLE_DIMENSION = np.array([.4, .15, .075]).reshape((3, 1))

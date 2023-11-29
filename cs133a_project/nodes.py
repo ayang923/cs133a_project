@@ -178,7 +178,7 @@ class BallNode(Node):
         # Initialize the ball position, velocity, set the acceleration.
         self.radius = 0.1
 
-        self.p = np.array([0.5, 0.0, self.radius]).reshape((3,1))
+        self.p = np.array([0.5, 0.0, 0.5 + self.radius]).reshape((3,1))
         self.v = np.array([0.0, 0.0,  5.0       ]).reshape((3,1))
         self.a = np.array([0.0, 0.0, -9.81      ]).reshape((3,1))
 

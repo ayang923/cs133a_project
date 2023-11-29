@@ -24,7 +24,7 @@ from cs133a_project.TrajectoryUtils    import *
 
 # Grab the general fkin from HW5 P5.
 from cs133a_project.KinematicChain     import KinematicChain
-from cs133a_project.joint_info import ATLAS_JOINT_NAMES, ATLAS_L_LEG_JOINT_NAMES, ATLAS_R_LEG_JOINT_NAMES
+from cs133a_project.joint_info import *
 
 from visualization_msgs.msg     import Marker
 from visualization_msgs.msg     import MarkerArray
@@ -49,21 +49,30 @@ class Trajectory():
 
         self.q0 = np.zeros((len(ATLAS_L_LEG_JOINT_NAMES), 1))
 
-        self.x0 = self.l_leg_chain.fkin(self.q0)[0]
-        self.xf = self.x0 + np.array([0, 0, 0.5]).reshape(3, 1)
+        self.x0_l_leg = self.l_leg_chain.fkin(self.q0)[0]
+        self.x0_r_leg = self.r_leg_chain.fkin(self.q0)[0]
 
-        self.q = np.vstack((self.q0, self.q0))
-        self.pd = self.x0
-        self.Rd = Reye()
-
-        self.p_world = np.array([0, 0, 0.75]).reshape([3, 1])
+        # put left leg at origin
         self.v_world = np.zeros((3, 1))
         self.R_world = Reye()
+        self.p_world = np.zeros((3, 1)) - self.R_world @ self.x0_l_leg
 
-        # wrt to world
+        # ball position wrt world
         self.ball_p = None
         self.ball_v = None
         self.ball_t = None
+        self.ball_a = np.array([0, 0, -9.81]).reshape((3, 1))
+
+        # trajectory info
+        self.T = None
+        self.xf_l_leg = None
+        self.xf_l_leg_height = 0.1
+
+        self.q = np.vstack((self.q0, self.q0))
+        self.pd = self.x0_l_leg
+        self.Rd = Reye()
+
+        #self.x_l_leg = self.x0_l_leg
 
     def process_ball(self, msg):
         if msg.markers:
@@ -74,6 +83,19 @@ class Trajectory():
                 self.ball_v = (new_ball_p - self.ball_p) / (new_ball_t - self.ball_t)
             self.ball_p = new_ball_p
             self.ball_t = new_ball_t
+
+            if not self.T and self.ball_v is not None:
+                roots = np.roots([1/2*self.ball_a[2, 0], self.ball_v[2, 0], self.ball_p[2, 0] - self.xf_l_leg_height])
+                self.T = roots[0] if roots[0] > 0 else roots[1]
+                ball_final = self.ball_p + self.ball_v * self.T + 1/2*self.ball_a * self.T**2
+
+                self.xf_l_leg = self.R_world.T @ (ball_final - self.p_world)
+
+            # ball wrt to pelvis
+            # pelvis_ball_p = self.R_world.T @ (new_ball_p - self.p_world)
+            # print("ball:", pelvis_ball_p)
+            # print("foot:", self.l_leg_chain.fkin(self.q)[0])
+            
 
     # Declare the joint names.
     def jointnames(self):
@@ -106,11 +128,14 @@ class Trajectory():
 
     # Evaluate at the given time.  This was last called (dt) ago.
     def evaluate(self, t, dt):
-        if self.ball_v is not None:
-            pd = self.R_world.T @ (self.ball_p - self.p_world)
-            vd = self.R_world.T @ (self.ball_v - self.v_world)
+        if self.xf_l_leg is not None:
+            t = t % (2*self.T)
+            if t < self.T:
+                pd, vd = goto(t, self.T, self.x0_l_leg, self.xf_l_leg)
+            else:
+                pd, vd = goto(t - self.T, self.T, self.xf_l_leg, self.x0_l_leg)
         else:
-            pd, vd = self.x0, np.zeros((3, 1))
+            pd, vd = self.x0_l_leg, np.zeros((3, 1))
         
         Rd, wd = Reye(), np.zeros((3, 1))
 
@@ -120,8 +145,9 @@ class Trajectory():
         Rdlast = self.Rd
 
         q_l_leg, qdot_l_leg = self.ikin_leg(qlast_l_leg, pdlast, Rdlast, self.l_leg_chain, pd, vd, Rd, wd, dt)
-        q_r_leg, qdot_r_leg = self.ikin_leg(qlast_l_leg, pdlast, Rdlast, self.r_leg_chain, pd, vd, Rd, wd, dt)
-        
+        #q_r_leg, qdot_r_leg = self.ikin_leg(qlast_l_leg, pdlast, Rdlast, self.r_leg_chain, pd, vd, Rd, wd, dt)
+        q_r_leg, qdot_r_leg = np.zeros((len(ATLAS_R_LEG_JOINT_NAMES), 1)), np.zeros((len(ATLAS_R_LEG_JOINT_NAMES), 1))
+
         self.q = np.vstack((q_l_leg, q_r_leg))
         self.pd = pd
         self.Rd = Rd
