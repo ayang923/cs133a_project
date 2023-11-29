@@ -42,7 +42,6 @@ from visualization_msgs.msg     import Marker
 from visualization_msgs.msg     import MarkerArray
 
 from cs133a_project.TransformHelpers import *
-from cs133a_project.msg_utils import *
 
 #
 #   Trajectory Generator Node Class

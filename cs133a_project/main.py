@@ -25,8 +25,6 @@ from cs133a_project.TrajectoryUtils    import *
 # Grab the general fkin from HW5 P5.
 from cs133a_project.KinematicChain     import KinematicChain
 from cs133a_project.joint_info import *
-from cs133a_project.msg_utils import *
-
 
 from visualization_msgs.msg     import Marker
 from visualization_msgs.msg     import MarkerArray
@@ -77,6 +75,9 @@ class Trajectory():
         # collision detection
         self.collision = False
 
+        # if leg should be going up or down
+        self.up = True
+
     def process_ball(self, msg):
         if msg.markers:
             ball = msg.markers[0]
@@ -102,11 +103,8 @@ class Trajectory():
                 if not self.collision:
                     self.node.collision_pub.publish(Pose_from_T(T_from_Rp(self.R_world @ self.Rd, self.p_world  + self.R_world @ self.pd)))
                     self.collision = True
-                    print('collision')
             else:
                 self.collision = False
-            # if (self.pd - radius <= pelvis_ball_p <= self.pd + radius):
-            #     print("collision")
             
 
     # Declare the joint names.
