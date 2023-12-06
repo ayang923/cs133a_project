@@ -42,6 +42,7 @@ from visualization_msgs.msg     import Marker
 from visualization_msgs.msg     import MarkerArray
 
 from cs133a_project.TransformHelpers import *
+from cs133a_project.joint_info import ATLAS_PADDLE_DIMENSION
 
 #
 #   Trajectory Generator Node Class
@@ -54,6 +55,33 @@ from cs133a_project.TransformHelpers import *
 #   Take the node name, the update frequency, and the trajectory class
 #   as arguments.
 #
+
+# wrapper function to contain both nodes in same object
+class ProjectNode:
+    def __init__(self, rate, Trajectory):
+        self.robot_node = RobotNode('robot', rate, Trajectory)
+        self.ball_node = BallNode('ball', rate)
+
+        self.robot_node.ball_r = self.ball_node.radius
+
+    def start(self):
+        while rclpy.ok():
+            rclpy.spin_once(self.ball_node)
+
+            # updates ball position in robot node
+            self.robot_node.ball_p = self.ball_node.p
+            self.robot_node.ball_v = self.ball_node.v
+            self.robot_node.ball_a = self.ball_node.a
+
+            rclpy.spin_once(self.robot_node)
+            if self.robot_node.collision:
+                self.ball_node.process_collision()
+    
+    def shutdown(self):
+        self.ball_node.shutdown()
+        self.robot_node.shutdown()
+        rclpy.shutdown()
+
 class RobotNode(Node):
     # Initialization.
     def __init__(self, name, rate, Trajectory):
@@ -69,13 +97,6 @@ class RobotNode(Node):
 
         # Add a publisher to send the joint commands.
         self.pub = self.create_publisher(JointState, '/joint_states', 10)
-
-        # to publish collision messages
-        self.collision_pub = self.create_publisher(
-            Pose,
-            '/collision_messages',
-            10
-        )
 
         # Wait for a connection to happen.  This isn't necessary, but
         # means we don't start until the rest of the system is ready.
@@ -97,6 +118,15 @@ class RobotNode(Node):
         self.timer = self.create_timer(self.dt, self.update)
         self.get_logger().info("Running with dt of %f seconds (%fHz)" %
                                (self.dt, rate))
+        
+        
+        # robot node stores ball's position
+        self.ball_p = None
+        self.ball_v = None
+        self.ball_a = None
+        self.ball_r = None
+
+        self.collision = False
 
     # Shutdown
     def shutdown(self):
@@ -181,18 +211,12 @@ class BallNode(Node):
                              depth=1)
         self.pub = self.create_publisher(
             MarkerArray, '/visualization_marker_array', quality)
-        
-        self.create_subscription(
-            Pose,
-            '/collision_messages',
-            self.process_collision,
-            10  # Queue size for topic 1
-        )
+
         # Initialize the ball position, velocity, set the acceleration.
         self.radius = 0.1
 
-        self.p = np.array([0.5, 0.0, 0.5 + self.radius]).reshape((3,1))
-        self.v = np.array([0.0, 0.0,  5.0       ]).reshape((3,1))
+        self.p = np.array([0.1, 0.0, 1 + self.radius]).reshape((3,1))
+        self.v = np.array([0.0, 0.0,  0.0      ]).reshape((3,1))
         self.a = np.array([0.0, 0.0, -9.81      ]).reshape((3,1))
 
         # Create the sphere marker.
@@ -225,13 +249,17 @@ class BallNode(Node):
         self.get_logger().info("Running with dt of %f seconds (%fHz)" %
                                (self.dt, rate))
 
-    def process_collision(self, msg):
-        T = T_from_Pose(msg)
-        R = R_from_T(T)
-        p = p_from_T(T)
+    def process_collision(self):
+        #T = T_from_Pose(msg)
+        #R = R_from_T(T)
+        #p = p_from_T(T)
 
-        self.v = R_from_T(T) @ -self.v
-        self.p = self.p + self.v / np.linalg.norm(self.v) * self.radius
+
+        # self.v = Reye() @ -self.v
+        # self.p = self.p + self.v / np.linalg.norm(self.v) * self.radius
+
+        self.p[2,0] = self.radius + (self.radius - self.p[2,0])
+        self.v[2,0] *= -1.0
 
     # Shutdown
     def shutdown(self):
@@ -248,10 +276,9 @@ class BallNode(Node):
         self.v += self.dt * self.a
         self.p += self.dt * self.v
 
-        # Check for a bounce - not the change in x velocity is non-physical.
-        if self.p[2,0] < self.radius:
-            self.p[2,0] = self.radius + (self.radius - self.p[2,0])
-            self.v[2,0] *= -1.0
+        # if self.p[2,0] < self.radius:
+        #     self.p[2,0] = self.radius + (self.radius - self.p[2,0])
+        #     self.v[2,0] *= -1.0
 
         # Update the ID number to create a new ball and leave the
         # previous balls where they are.

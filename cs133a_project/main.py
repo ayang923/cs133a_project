@@ -18,7 +18,7 @@ from math import pi, sin, cos, acos, atan2, sqrt, fmod, exp
 from scipy.linalg import diagsvd
 
 # Grab the utilities
-from cs133a_project.nodes      import RobotNode, BallNode
+from cs133a_project.nodes      import ProjectNode, RobotNode, BallNode
 from cs133a_project.TransformHelpers   import *
 from cs133a_project.TrajectoryUtils    import *
 
@@ -29,12 +29,13 @@ from cs133a_project.joint_info import *
 from visualization_msgs.msg     import Marker
 from visualization_msgs.msg     import MarkerArray
 
+
 #
 #   Trajectory Class
 #
 class Trajectory():
     # Initialization.
-    def __init__(self, node):
+    def __init__(self, node: RobotNode):
         self.node = node
         # Set up the kinematic chain object.
         self.node.create_subscription(
@@ -57,12 +58,6 @@ class Trajectory():
         self.R_world = Reye()
         self.p_world = np.zeros((3, 1)) - self.R_world @ self.x0_l_leg
 
-        # ball position wrt world
-        self.ball_p = None
-        self.ball_v = None
-        self.ball_t = None
-        self.ball_a = np.array([0, 0, -9.81]).reshape((3, 1))
-
         # trajectory info
         self.T = None
         self.xf_l_leg = None
@@ -72,39 +67,40 @@ class Trajectory():
         self.pd = self.x0_l_leg
         self.Rd = Reye()
 
-        # collision detection
         self.collision = False
 
-        # if leg should be going up or down
-        self.up = True
 
     def process_ball(self, msg):
-        if msg.markers:
-            ball = msg.markers[0]
-            radius = p_from_Vector3(ball.scale)[0, 0] / 2
-            new_ball_p = p_from_Point(ball.pose.position)
-            new_ball_t = ball.header.stamp.sec + ball.header.stamp.nanosec*10**-9
-            if self.ball_p is not None:
-                self.ball_v = (new_ball_p - self.ball_p) / (new_ball_t - self.ball_t)
-            self.ball_p = new_ball_p
-            self.ball_t = new_ball_t
+        # if msg.markers:
+        #     ball = msg.markers[0]
+        #     radius = p_from_Vector3(ball.scale)[0, 0] / 2
+        #     new_ball_p = p_from_Point(ball.pose.position)
+        #     new_ball_t = ball.header.stamp.sec + ball.header.stamp.nanosec*10**-9
+        #     if self.ball_p is not None:
+        #         self.ball_v = (new_ball_p - self.ball_p) / (new_ball_t - self.ball_t)
+        #     self.ball_p = new_ball_p
+        #     self.ball_t = new_ball_t
 
-            if not self.T and self.ball_v is not None:
-                roots = np.roots([1/2*self.ball_a[2, 0], self.ball_v[2, 0], self.ball_p[2, 0] - self.xf_l_leg_height])
-                self.T = roots[0] if roots[0] > 0 else roots[1]
-                ball_final = self.ball_p + self.ball_v * self.T + 1/2*self.ball_a * self.T**2
+        #     if not self.T and self.ball_v is not None:
+        #         roots = np.roots([1/2*self.ball_a[2, 0], self.ball_v[2, 0], self.ball_p[2, 0] - self.xf_l_leg_height])
+        #         print([1/2*self.ball_a[2, 0], self.ball_v[2, 0], self.ball_p[2, 0] - self.xf_l_leg_height])
+        #         self.T = roots[0] if roots[0] > 0 else roots[1]
+        #         print(self.T)
+        #         ball_final = self.ball_p + self.ball_v * self.T + 1/2*self.ball_a * self.T**2
 
-                self.xf_l_leg = self.R_world.T @ (ball_final - self.p_world)
+        #         self.xf_l_leg = self.R_world.T @ (ball_final - self.p_world)
 
-            # ball wrt pelvis
-            pelvis_ball_p = self.R_world.T @ (new_ball_p - self.p_world)
+        #     # ball wrt pelvis
+        #     pelvis_ball_p = self.R_world.T @ (new_ball_p - self.p_world)
 
-            if ((pelvis_ball_p <= self.pd + radius) & (self.pd - radius <= pelvis_ball_p)).all():
-                if not self.collision:
-                    self.node.collision_pub.publish(Pose_from_T(T_from_Rp(self.R_world @ self.Rd, self.p_world  + self.R_world @ self.pd)))
-                    self.collision = True
-            else:
-                self.collision = False
+        #     # if ((pelvis_ball_p <= self.pd + radius) & (self.pd - radius <= pelvis_ball_p)).all():
+        #     #     if not self.collision:
+        #     #         self.node.collision_pub.publish(Pose_from_T(T_from_Rp(self.R_world @ self.Rd, self.p_world  + self.R_world @ self.pd)))
+        #     #         self.node.collision = True
+        #     #         print("collision")
+        #     # else:
+        #     #     self.collision = False
+        pass
             
 
     # Declare the joint names.
@@ -138,15 +134,19 @@ class Trajectory():
 
     # Evaluate at the given time.  This was last called (dt) ago.
     def evaluate(self, t, dt):
-        if self.xf_l_leg is not None:
-            t = t % (2*self.T)
-            if t < self.T:
-                pd, vd = goto(t, self.T, self.x0_l_leg, self.xf_l_leg)
+        pelvis_ball_p = self.R_world.T @ (self.node.ball_p - self.p_world)
+        if ((pelvis_ball_p <= self.pd + self.node.ball_r + ATLAS_PADDLE_DIMENSION/2) & (self.pd - self.node.ball_r - ATLAS_PADDLE_DIMENSION/2 <= pelvis_ball_p)).all():
+            if not self.collision:
+                self.node.collision = True
+                self.collision = True
+                print("collision")
             else:
-                pd, vd = goto(t - self.T, self.T, self.xf_l_leg, self.x0_l_leg)
+                self.node.collision = False
         else:
-            pd, vd = self.x0_l_leg, np.zeros((3, 1))
-        
+            self.collision = False
+            self.node.collision = False
+        pd, vd = self.x0_l_leg, np.zeros((3, 1))
+
         Rd, wd = Reye(), np.zeros((3, 1))
 
         qlast_l_leg = self.q[:len(ATLAS_L_LEG_JOINT_NAMES), :]
@@ -179,17 +179,12 @@ class Trajectory():
 #
 def main(args=None):
     rclpy.init(args=args)
-    ball_node = BallNode('balldemo', 50)
-    robot_node = RobotNode('generator', 100, Trajectory)
 
-    while rclpy.ok():
-        rclpy.spin_once(robot_node)  # Spinning node_a
-        rclpy.spin_once(ball_node)  # Spinning node_b
+    project_node = ProjectNode(100, Trajectory)
+    project_node.start()
 
     # Shutdown the node and ROS.
-    ball_node.shutdown()
-    robot_node.shutdown()
-    rclpy.shutdown()
+    project_node.shutdown()
 
 if __name__ == "__main__":
     main(
