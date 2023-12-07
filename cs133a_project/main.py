@@ -38,20 +38,14 @@ class Trajectory():
     def __init__(self, node: RobotNode):
         self.node = node
         # Set up the kinematic chain object.
-        self.node.create_subscription(
-            MarkerArray,
-            '/visualization_marker_array',
-            self.process_ball,
-            10  # Queue size for topic 1
-        )
-
         self.l_leg_chain = KinematicChain(self.node, 'pelvis', 'l_foot_paddle', ATLAS_L_LEG_JOINT_NAMES)
         self.r_leg_chain = KinematicChain(self.node, 'pelvis', 'r_foot_paddle', ATLAS_R_LEG_JOINT_NAMES)
 
         self.q0 = np.zeros((len(ATLAS_L_LEG_JOINT_NAMES), 1))
 
         self.x0_l_leg = self.l_leg_chain.fkin(self.q0)[0]
-        self.x0_r_leg = self.r_leg_chain.fkin(self.q0)[0]
+
+        self.theta0_l_leg = 0.0
 
         # put left leg at origin
         self.v_world = np.zeros((3, 1))
@@ -61,50 +55,16 @@ class Trajectory():
         # trajectory info
         self.T = None
         self.xf_l_leg = None
-        self.xf_l_leg_height = 0.3
+        self.thetaf_l_leg = self.theta0_l_leg
 
         self.q = np.vstack((self.q0, self.q0))
         self.pd = self.x0_l_leg
-        self.Rd = Reye()
+        self.Rd = Roty(self.theta0_l_leg)
         #self.Rd = Roty(0.5)
 
         self.collision = False
 
-        self.start_time = 0.0
-
-
-    def process_ball(self, msg):
-        # if msg.markers:
-        #     ball = msg.markers[0]
-        #     radius = p_from_Vector3(ball.scale)[0, 0] / 2
-        #     new_ball_p = p_from_Point(ball.pose.position)
-        #     new_ball_t = ball.header.stamp.sec + ball.header.stamp.nanosec*10**-9
-        #     if self.ball_p is not None:
-        #         self.ball_v = (new_ball_p - self.ball_p) / (new_ball_t - self.ball_t)
-        #     self.ball_p = new_ball_p
-        #     self.ball_t = new_ball_t
-
-        #     if not self.T and self.ball_v is not None:
-        #         roots = np.roots([1/2*self.ball_a[2, 0], self.ball_v[2, 0], self.ball_p[2, 0] - self.xf_l_leg_height])
-        #         print([1/2*self.ball_a[2, 0], self.ball_v[2, 0], self.ball_p[2, 0] - self.xf_l_leg_height])
-        #         self.T = roots[0] if roots[0] > 0 else roots[1]
-        #         print(self.T)
-        #         ball_final = self.ball_p + self.ball_v * self.T + 1/2*self.ball_a * self.T**2
-
-        #         self.xf_l_leg = self.R_world.T @ (ball_final - self.p_world)
-
-        #     # ball wrt pelvis
-        #     pelvis_ball_p = self.R_world.T @ (new_ball_p - self.p_world)
-
-        #     # if ((pelvis_ball_p <= self.pd + radius) & (self.pd - radius <= pelvis_ball_p)).all():
-        #     #     if not self.collision:
-        #     #         self.node.collision_pub.publish(Pose_from_T(T_from_Rp(self.R_world @ self.Rd, self.p_world  + self.R_world @ self.pd)))
-        #     #         self.node.collision = True
-        #     #         print("collision")
-        #     # else:
-        #     #     self.collision = False
-        pass
-            
+        self.start_time = 0.0 
 
     # Declare the joint names.
     def jointnames(self):
@@ -144,16 +104,15 @@ class Trajectory():
         T_up = -self.node.ball_v[2, 0] / self.node.ball_a[2, 0]
         b_up = self.node.ball_p + self.node.ball_v * T_up + 1/2*self.node.ball_a * T_up**2
 
-        print("T_up", T_up)
-
+        # chooses random height from 0.1 to 0.5
         roots = np.roots([1/2*self.node.ball_a[2, 0], 0, b_up[2, 0] - np.random.uniform(0.1, 0.5)])
         T_down = roots[0] if roots[0] > 0 else roots[1]
 
         self.T = T_up + T_down
-        print(self.T)
         ball_final = self.node.ball_p + self.node.ball_v * self.T + 1/2*self.node.ball_a * self.T**2
 
         self.xf_l_leg = self.R_world.T @ (ball_final - self.p_world)
+        self.thetaf_l_leg = np.random.uniform(-0.1, 0.1)
 
     def check_touching(self, pd, Rd):
         # transform ball into foot coordinates
@@ -184,14 +143,17 @@ class Trajectory():
         if self.check_collision():
             self.start_time = t
             self.x0_l_leg = self.pd
+            self.theta0_l_leg = self.thetaf_l_leg
 
         if self.xf_l_leg is not None:
             pd, vd = goto(t - self.start_time, self.T, self.x0_l_leg, self.xf_l_leg)
+
+            theta, thetadot = goto(t - self.start_time, self.T, self.theta0_l_leg, self.thetaf_l_leg)
+            Rd, wd = Roty(theta), thetadot * ey()
         else:
             pd, vd = self.x0_l_leg, np.zeros((3, 1))
             self.start_time = t
-
-        Rd, wd = self.Rd, np.zeros((3, 1))
+            Rd, wd = self.Rd, np.zeros((3, 1))
 
         qlast_l_leg = self.q[:len(ATLAS_L_LEG_JOINT_NAMES), :]
 

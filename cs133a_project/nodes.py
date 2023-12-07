@@ -262,7 +262,7 @@ class BallNode(Node):
         p = p_from_T(collision_info.T)
 
 
-        self.v = R @ -self.v
+        self.v = R @ -(self.v + 0.01*(self.v))
         #self.p = self.p + self.v / np.linalg.norm(self.v) * (2 * self.radius - 2 * self.p)
 
     # Shutdown
