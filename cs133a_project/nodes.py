@@ -78,6 +78,9 @@ class ProjectNode:
             self.robot_node.ball_v = self.ball_node.v
             self.robot_node.ball_a = self.ball_node.a
 
+            if self.robot_node.collision.collision_bool:
+                self.robot_node.trajectory.recalculate()
+
             rclpy.spin_once(self.robot_node)
             if self.robot_node.collision.collision_bool:
                 self.ball_node.process_collision(self.robot_node.collision)
@@ -260,7 +263,7 @@ class BallNode(Node):
 
 
         self.v = R @ -self.v
-        self.p = self.p + self.v / np.linalg.norm(self.v) * (2 * self.radius - 2 * self.p)
+        #self.p = self.p + self.v / np.linalg.norm(self.v) * (2 * self.radius - 2 * self.p)
 
     # Shutdown
     def shutdown(self):

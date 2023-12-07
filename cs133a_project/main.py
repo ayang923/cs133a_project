@@ -70,6 +70,8 @@ class Trajectory():
 
         self.collision = False
 
+        self.start_time = 0.0
+
 
     def process_ball(self, msg):
         # if msg.markers:
@@ -137,6 +139,22 @@ class Trajectory():
     def convert_to_world(self, pd, Rd):
         return self.p_world + self.R_world @ pd, self.R_world @ Rd
     
+    def recalculate(self):
+        # upward time
+        T_up = -self.node.ball_v[2, 0] / self.node.ball_a[2, 0]
+        b_up = self.node.ball_p + self.node.ball_v * T_up + 1/2*self.node.ball_a * T_up**2
+
+        print("T_up", T_up)
+
+        roots = np.roots([1/2*self.node.ball_a[2, 0], 0, b_up[2, 0] - np.random.uniform(0.1, 0.5)])
+        T_down = roots[0] if roots[0] > 0 else roots[1]
+
+        self.T = T_up + T_down
+        print(self.T)
+        ball_final = self.node.ball_p + self.node.ball_v * self.T + 1/2*self.node.ball_a * self.T**2
+
+        self.xf_l_leg = self.R_world.T @ (ball_final - self.p_world)
+
     def check_touching(self, pd, Rd):
         # transform ball into foot coordinates
         ball_p_foot = Rd @ (self.node.ball_p - pd)
@@ -151,20 +169,27 @@ class Trajectory():
                 self.node.collision.collision_bool = True
                 self.node.collision.T = T_from_Rp(R, p)
                 self.collision = True
-
-                self.recalculate() # recalculate trajectory
+                return True
             else:
                 self.node.collision.collision_bool = False
         else:
             self.collision = False
             self.node.collision.collision_bool = False
 
+        return False
+
 
     # Evaluate at the given time.  This was last called (dt) ago.
     def evaluate(self, t, dt):
-        self.check_collision()
+        if self.check_collision():
+            self.start_time = t
+            self.x0_l_leg = self.pd
 
-        pd, vd = self.x0_l_leg, np.zeros((3, 1))
+        if self.xf_l_leg is not None:
+            pd, vd = goto(t - self.start_time, self.T, self.x0_l_leg, self.xf_l_leg)
+        else:
+            pd, vd = self.x0_l_leg, np.zeros((3, 1))
+            self.start_time = t
 
         Rd, wd = self.Rd, np.zeros((3, 1))
 
