@@ -56,6 +56,11 @@ from cs133a_project.joint_info import ATLAS_PADDLE_DIMENSION
 #   as arguments.
 #
 
+class CollisionInfo:
+    def __init__(self, collision_bool, T):
+        self.collision_bool = collision_bool
+        self.T = T
+
 # wrapper function to contain both nodes in same object
 class ProjectNode:
     def __init__(self, rate, Trajectory):
@@ -74,8 +79,8 @@ class ProjectNode:
             self.robot_node.ball_a = self.ball_node.a
 
             rclpy.spin_once(self.robot_node)
-            if self.robot_node.collision:
-                self.ball_node.process_collision()
+            if self.robot_node.collision.collision_bool:
+                self.ball_node.process_collision(self.robot_node.collision)
     
     def shutdown(self):
         self.ball_node.shutdown()
@@ -126,7 +131,7 @@ class RobotNode(Node):
         self.ball_a = None
         self.ball_r = None
 
-        self.collision = False
+        self.collision = CollisionInfo(False, None)
 
     # Shutdown
     def shutdown(self):
@@ -249,17 +254,13 @@ class BallNode(Node):
         self.get_logger().info("Running with dt of %f seconds (%fHz)" %
                                (self.dt, rate))
 
-    def process_collision(self):
-        #T = T_from_Pose(msg)
-        #R = R_from_T(T)
-        #p = p_from_T(T)
+    def process_collision(self, collision_info: CollisionInfo):
+        R = R_from_T(collision_info.T)
+        p = p_from_T(collision_info.T)
 
 
-        # self.v = Reye() @ -self.v
-        # self.p = self.p + self.v / np.linalg.norm(self.v) * self.radius
-
-        self.p[2,0] = self.radius + (self.radius - self.p[2,0])
-        self.v[2,0] *= -1.0
+        self.v = R @ -self.v
+        self.p = self.p + self.v / np.linalg.norm(self.v) * (2 * self.radius - 2 * self.p)
 
     # Shutdown
     def shutdown(self):
@@ -275,10 +276,6 @@ class BallNode(Node):
         # Integrate the velocity, then the position.
         self.v += self.dt * self.a
         self.p += self.dt * self.v
-
-        # if self.p[2,0] < self.radius:
-        #     self.p[2,0] = self.radius + (self.radius - self.p[2,0])
-        #     self.v[2,0] *= -1.0
 
         # Update the ID number to create a new ball and leave the
         # previous balls where they are.

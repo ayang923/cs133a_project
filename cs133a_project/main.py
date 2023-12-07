@@ -18,7 +18,7 @@ from math import pi, sin, cos, acos, atan2, sqrt, fmod, exp
 from scipy.linalg import diagsvd
 
 # Grab the utilities
-from cs133a_project.nodes      import ProjectNode, RobotNode, BallNode
+from cs133a_project.nodes      import ProjectNode, RobotNode, BallNode, CollisionInfo
 from cs133a_project.TransformHelpers   import *
 from cs133a_project.TrajectoryUtils    import *
 
@@ -66,6 +66,7 @@ class Trajectory():
         self.q = np.vstack((self.q0, self.q0))
         self.pd = self.x0_l_leg
         self.Rd = Reye()
+        #self.Rd = Roty(0.5)
 
         self.collision = False
 
@@ -131,23 +132,41 @@ class Trajectory():
         S_inv[~msk] = S[~msk]/gamma**2
 
         return V.T @ diagsvd(S_inv, *J.T.shape) @ U.T
+    
+    # converts frame relative to pelvis to world frame
+    def convert_to_world(self, pd, Rd):
+        return self.p_world + self.R_world @ pd, self.R_world @ Rd
+    
+    def check_touching(self, pd, Rd):
+        # transform ball into foot coordinates
+        ball_p_foot = Rd @ (self.node.ball_p - pd)
+
+        return ((ball_p_foot <= ATLAS_PADDLE_DIMENSION/2 + self.node.ball_r) & (ball_p_foot >= -ATLAS_PADDLE_DIMENSION/2 - self.node.ball_r)).all()
+
+    def check_collision(self):
+        p, R = self.convert_to_world(self.pd, self.Rd)
+        if self.check_touching(p, R):
+            # insures collision is only processed once
+            if not self.collision:
+                self.node.collision.collision_bool = True
+                self.node.collision.T = T_from_Rp(R, p)
+                self.collision = True
+
+                self.recalculate() # recalculate trajectory
+            else:
+                self.node.collision.collision_bool = False
+        else:
+            self.collision = False
+            self.node.collision.collision_bool = False
+
 
     # Evaluate at the given time.  This was last called (dt) ago.
     def evaluate(self, t, dt):
-        pelvis_ball_p = self.R_world.T @ (self.node.ball_p - self.p_world)
-        if ((pelvis_ball_p <= self.pd + self.node.ball_r + ATLAS_PADDLE_DIMENSION/2) & (self.pd - self.node.ball_r - ATLAS_PADDLE_DIMENSION/2 <= pelvis_ball_p)).all():
-            if not self.collision:
-                self.node.collision = True
-                self.collision = True
-                print("collision")
-            else:
-                self.node.collision = False
-        else:
-            self.collision = False
-            self.node.collision = False
+        self.check_collision()
+
         pd, vd = self.x0_l_leg, np.zeros((3, 1))
 
-        Rd, wd = Reye(), np.zeros((3, 1))
+        Rd, wd = self.Rd, np.zeros((3, 1))
 
         qlast_l_leg = self.q[:len(ATLAS_L_LEG_JOINT_NAMES), :]
 
