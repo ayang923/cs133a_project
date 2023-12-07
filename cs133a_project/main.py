@@ -72,20 +72,6 @@ class Trajectory():
     def jointnames(self):
         # Return a list of joint names FOR THE EXPECTED URDF!
         return ATLAS_JOINT_NAMES
-    
-    def ikin_leg(self, qlast, pdlast, Rdlast, kinematic_chain, pd, vd, Rd, wd, dt):
-        p, R, Jv, Jw = kinematic_chain.fkin(qlast)
-        
-        J = np.vstack((Jv, Jw))
-        xdot = np.vstack((vd, wd))
-
-        e = np.vstack((ep(pdlast, p), eR(Rdlast, R)))
-        J_inv = self.weighted_svd_inverse(J)
-
-        qdot = J_inv @ (xdot + 20*e)
-        q = qlast + dt*qdot
-
-        return q, qdot
             
     def weighted_svd_inverse(self, J, gamma=0.1):
         U, S, V = np.linalg.svd(J)
@@ -157,53 +143,48 @@ class Trajectory():
             self.start_time = t
             return (self.p_world, self.R_world, np.zeros((len(ATLAS_JOINT_NAMES), 1)).flatten().tolist(), np.zeros((len(ATLAS_JOINT_NAMES), 1)).flatten().tolist())
             
+        qlast_l_leg = self.q[:len(ATLAS_L_LEG_JOINT_NAMES), :]
+        qlast_r_leg = self.q[len(ATLAS_L_LEG_JOINT_NAMES):, :]
+
         # position of right leg in pelvis frame
-        p_r_pelvis, Rd_r_pelvis, _, _ = self.r_leg_chain.fkin(self.q[len(ATLAS_L_LEG_JOINT_NAMES):, :])
+        p_r_pelvis, Rd_r_pelvis, _, _ = self.r_leg_chain.fkin(qlast_r_leg)
         p_r_world, Rd_r_world = self.convert_to_world(p_r_pelvis, Rd_r_pelvis)
 
         # calculate theta wrt world
         theta, thetadot = goto(t - self.start_time, self.T, self.theta0_l_leg, self.thetaf_l_leg)
 
         # computes trajectories wrt world to be saved
-        pd_world, wd_world = goto(t - self.start_time, self.T, self.x0_l_leg, self.xf_l_leg)
+        pd_world = goto(t - self.start_time, self.T, self.x0_l_leg, self.xf_l_leg)[0]
         Rd_world = Roty(theta)
 
-        # # desired position of left leg in pelvis frame
-        # x0_leg_pelvis, R_pelvis = self.convert_to_pelvis(self.x0_l_leg, Roty(theta))
-        # xf_leg_pelvis, _ = self.convert_to_pelvis(self.xf_l_leg, Reye())
-
-        # # desired position of left leg in right leg frame
-        # x0_leg_r = Rd_r.T @ (x0_leg_pelvis - p_r)
-        # xf_leg_r = Rd_r.T @ (xf_leg_r - p_r)
-
-        x0_l_leg_r, Rd_r = self.convert_to_r_leg(self.x0_l_leg, Rd_world, p_r_world, Rd_r_world)
-        xf_l_leg_r, _ = self.convert_to_r_leg(self.xf_l_leg, Rd_world, p_r_world, Rd_r_world)
+        # velocities computed wrt r leg for ikin
+        x0_l_leg_r, _ = self.convert_to_r_leg(self.x0_l_leg, Reye(), p_r_world, Rd_r_world)
+        xf_l_leg_r, _ = self.convert_to_r_leg(self.xf_l_leg, Reye(), p_r_world, Rd_r_world)
 
         vd = goto(t - self.start_time, self.T, x0_l_leg_r, xf_l_leg_r)[1]
         wd = Rd_r_world.T @ (thetadot * ey())
 
-        qlast_l_leg = self.q[:len(ATLAS_L_LEG_JOINT_NAMES), :]
-        qlast_r_leg = self.q[len(ATLAS_L_LEG_JOINT_NAMES):, :]
-
+        # last pd and Rd wrt pelvis
         pdlast, Rdlast = self.convert_to_pelvis(self.pd, self.Rd)
 
         p_l, R_l, Jv_l, Jw_l = self.l_leg_chain.fkin(qlast_l_leg)
         p_r, R_r, Jv_r, Jw_r = self.r_leg_chain.fkin(qlast_r_leg)
+
+        # last pd and Rd wrt right leg
+        pdlast_r, Rdlast_r = self.convert_to_r_leg(pdlast, Rdlast, p_r, R_r)
+        # last computed p_l and R_l wrt right leg
+        p_l_r, R_l_r = self.convert_to_r_leg(p_l, R_l, p_r, R_r)
 
         Jv = R_r.T @ (np.hstack((Jv_l, -Jv_r)) + crossmat(p_l - p_r) @ np.hstack((np.zeros((3, len(ATLAS_L_LEG_JOINT_NAMES))), Jw_r)))
         Jw = R_r.T @ (np.hstack((Jw_l, -Jw_r)))
         J = np.vstack((Jv, Jw))
         xdot = np.vstack((vd, wd))
 
-        e = np.vstack((ep(pdlast, p_l), eR(Rdlast, R_l)))
+        e = np.vstack((ep(pdlast_r, p_l_r), eR(Rdlast_r, R_l_r)))
         J_inv = self.weighted_svd_inverse(J)
 
-        qdot = J_inv @ (xdot)
+        qdot = J_inv @ (xdot + 20*e)
         q = self.q + dt*qdot
-
-        #q_l_leg, qdot_l_leg = self.ikin_leg(qlast_l_leg, pdlast, Rdlast, self.l_leg_chain, pd_world, vd, Rd_world, wd, dt)
-        #q_r_leg, qdot_r_leg = self.ikin_leg(qlast_l_leg, pdlast, Rdlast, self.r_leg_chain, pd, vd, Rd, wd, dt)
-        #q_r_leg, qdot_r_leg = np.zeros((len(ATLAS_R_LEG_JOINT_NAMES), 1)), np.zeros((len(ATLAS_R_LEG_JOINT_NAMES), 1))
 
         self.q = q
         self.pd, self.Rd = pd_world, Rd_world
@@ -214,6 +195,7 @@ class Trajectory():
         q = np.array([q_dict[joint_name] if joint_name in q_dict else 0 for joint_name in self.jointnames()])
         qdot = np.array([qdot_dict[joint_name] if joint_name in q_dict else 0 for joint_name in self.jointnames()])
         
+        # fixes right leg to ground
         self.p_world = self.x_r_leg - self.R_world @ p_r
         self.R_world = R_r.T
         return (self.p_world, self.R_world, q.flatten().tolist(), qdot.flatten().tolist())
