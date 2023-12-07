@@ -40,6 +40,8 @@ class Trajectory():
         # Set up the kinematic chain object.
         self.l_leg_chain = KinematicChain(self.node, 'pelvis', 'l_foot_paddle', ATLAS_L_LEG_JOINT_NAMES)
         self.r_leg_chain = KinematicChain(self.node, 'pelvis', 'r_foot_paddle', ATLAS_R_LEG_JOINT_NAMES)
+        self.r_arm_chain = KinematicChain(self.node, 'pelvis', 'r_hand', ATLAS_R_ARM_JOINT_NAMES)
+
 
         self.q0 = np.zeros((len(ATLAS_L_LEG_JOINT_NAMES), 1))
 
@@ -93,7 +95,7 @@ class Trajectory():
     
     # converts frame relative to right leg frame, arguments are positions that are wrt same frame
     def convert_to_r_leg(self, pd, Rd, pd_r_leg, Rd_r_leg):
-        return Rd_r_leg.T @ (pd - pd_r_leg), Rd.T @ Rd_r_leg
+        return Rd_r_leg.T @ (pd - pd_r_leg), Rd_r_leg.T @ Rd
         
     def recalculate(self):
         # upward time
@@ -107,7 +109,7 @@ class Trajectory():
         self.T = T_up + T_down
 
         self.xf_l_leg = self.node.ball_p + self.node.ball_v * self.T + 1/2*self.node.ball_a * self.T**2
-        self.thetaf_l_leg = np.random.uniform(-0.1, 0.1)
+        self.thetaf_l_leg = np.random.uniform(-0.01, 0.01)
 
     def check_touching(self, pd, Rd):
         # transform ball into foot coordinates

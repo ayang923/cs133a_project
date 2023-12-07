@@ -51,4 +51,17 @@ ATLAS_R_LEG_JOINT_NAMES = [
     "r_leg_akx",
 ]
 
+ATLAS_R_ARM_JOINT_NAMES = [
+    "back_bkz",
+    "back_bky",
+    "back_bkx",
+    "r_arm_shz",
+    "r_arm_shx",
+    "r_arm_ely",
+    "r_arm_elx",
+    "r_arm_wry",
+    "r_arm_wrx",
+    "r_arm_wry2"
+]
+
 ATLAS_PADDLE_DIMENSION = np.array([.4, .15, .075]).reshape((3, 1))
