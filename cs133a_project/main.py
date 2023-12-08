@@ -72,7 +72,8 @@ class Trajectory():
         self.x_r_leg = self.convert_to_world(x0_r_leg, Reye())[0]
 
         # position of r hand in world frame
-        self.x_r_arm = self.x_r_leg + np.array([0.1, 0, 2]).reshape((3, 1))
+        #self.x_r_arm = self.x_r_leg + np.array([0.1, 0, 2]).reshape((3, 1))
+        self.x_r_arm = self.convert_to_world(self.r_arm_chain.fkin(self.q0_arm)[0].reshape((3, 1)), Reye())[0]
         self.R_r_arm = Reye()
 
     # Declare the joint names.
@@ -191,28 +192,42 @@ class Trajectory():
         J_arms_zeros = np.zeros((3, len(ATLAS_R_ARM_JOINT_NAMES)))
         J_legs_zeros = np.zeros((3, len(ATLAS_L_LEG_JOINT_NAMES)))
 
+        # leg jacobian
         Jv_leg = R_r.T @ (np.hstack((Jv_l, -Jv_r, J_arms_zeros)) + crossmat(p_l - p_r) @ np.hstack((J_legs_zeros, Jw_r, J_arms_zeros)))
         Jw_leg = R_r.T @ (np.hstack((Jw_l, -Jw_r, J_arms_zeros)))
         J_leg = np.vstack((Jv_leg, Jw_leg))
 
+        # arm jacobian
         Jv_arm = R_r.T @ (np.hstack((J_legs_zeros, -Jv_r, Jv_r_arm)) + crossmat(p_r_arm - p_r) @ np.hstack((J_legs_zeros, Jw_r, J_arms_zeros)))
         Jw_arm = R_r.T @ np.hstack((J_legs_zeros, -Jw_r, Jw_r_arm))
-
         J_arm = np.vstack((Jv_arm, Jw_arm))
 
+        # error vector for arm
         e_p_arm = ep(pdlast_arm_r, p_r_arm_r)
         e_R_arm = eR(Rdlast_arm_r, R_r_arm_r)
-        e_arm = np.vstack((e_p_arm, e_R_arm))
+        e_arm = np.vstack((e_p_arm, e_R_arm))        
 
         J = np.vstack((J_leg, J_arm))
         xdot = np.vstack((vd, wd, e_arm * 0.001))
 
-        print(J.shape)
-
         e = np.vstack((ep(pdlast_r, p_l_r), eR(Rdlast_r, R_l_r), e_arm))
         J_inv = self.weighted_svd_inverse(J)
 
-        qdot = J_inv @ (xdot + 20*e)
+        # secondary task of joint limits
+        q_l_leg_goal = np.mean(ATLAS_L_LEG_JOINT_CONSTRAINTS, axis=1).reshape((-1, 1))
+        q_r_leg_goal = np.mean(ATLAS_R_LEG_JOINT_CONSTRAINTS, axis=1).reshape((-1, 1))
+        q_l_leg_goal_interval = (ATLAS_L_LEG_JOINT_CONSTRAINTS[:, 1] - ATLAS_L_LEG_JOINT_CONSTRAINTS[:, 0]).reshape((-1, 1))
+        q_r_leg_goal_interval = (ATLAS_R_LEG_JOINT_CONSTRAINTS[:, 1] - ATLAS_R_LEG_JOINT_CONSTRAINTS[:, 0]).reshape((-1, 1))
+
+        q_arm_goal = np.mean(ATLAS_ARM_JOINT_CONSTRAINTS, axis=1).reshape((-1, 1))
+        q_arm_goal_interval = (ATLAS_ARM_JOINT_CONSTRAINTS[:, 1] - ATLAS_ARM_JOINT_CONSTRAINTS[:, 0]).reshape((-1, 1))
+
+        qdot_leg_goal = np.vstack((np.pi/q_l_leg_goal_interval*(q_l_leg_goal - qlast_l_leg), np.pi/q_r_leg_goal_interval*(q_r_leg_goal - qlast_r_leg)))
+        qdot_arm_goal = np.pi/q_arm_goal_interval * (q_arm_goal - qlast_r_arm)
+
+        qdot_goal = np.vstack((qdot_leg_goal, qdot_arm_goal))
+
+        qdot = J_inv @ (xdot + 10*e - J @ qdot_goal) + qdot_goal
         q = self.q + dt*qdot
 
         self.q = q

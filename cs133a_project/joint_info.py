@@ -64,4 +64,36 @@ ATLAS_R_ARM_JOINT_NAMES = [
     "r_arm_wry2"
 ]
 
+ATLAS_ARM_JOINT_CONSTRAINTS = np.array([
+    [-np.pi/2, np.pi/2],
+    [-np.pi/2, np.pi/2],
+    [-np.pi/2, np.pi/2],
+    [-np.pi/2, np.pi/2],
+    [-np.pi/2, np.pi/2],
+    [0, np.pi],
+    [-np.pi/2, 0],
+    [-np.pi/2, np.pi/2],
+    [-np.pi/2, np.pi/2],
+    [-np.pi/2, np.pi/2]
+])
+
+ATLAS_R_LEG_JOINT_CONSTRAINTS = np.array([
+    [-np.pi/2, np.pi/2],
+    [-np.pi/2, np.pi/2],
+    [-np.pi/2, np.pi/2],
+    [0, 2*np.pi/3],
+    [-np.pi/6, np.pi/6], 
+    [-np.pi/6, np.pi/6]
+])
+
+# left knee constrained more
+ATLAS_L_LEG_JOINT_CONSTRAINTS = np.array([
+    [-np.pi/2, np.pi/2],
+    [-np.pi/2, np.pi/2],
+    [-np.pi/2, np.pi/2],
+    [0, np.pi/3],
+    [-np.pi/6, np.pi/6], 
+    [-np.pi/6, np.pi/6]
+])
+
 ATLAS_PADDLE_DIMENSION = np.array([.4, .15, .075]).reshape((3, 1))
