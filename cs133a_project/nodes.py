@@ -26,6 +26,10 @@
 import rclpy
 import numpy as np
 
+import signal
+import sys
+import threading
+
 from asyncio            import Future
 from rclpy.node         import Node
 from sensor_msgs.msg    import JointState
@@ -41,8 +45,20 @@ from std_msgs.msg               import ColorRGBA
 from visualization_msgs.msg     import Marker
 from visualization_msgs.msg     import MarkerArray
 
+from PyQt5.QtCore       import (Qt, QTimer)
+from PyQt5.QtWidgets    import (QApplication,
+                                QWidget, QLabel, QHBoxLayout, QVBoxLayout,
+                                QSlider, QCheckBox, QMainWindow)
+
+from PyQt5.QtCore import QObject, pyqtSignal, QThread
+
+from rclpy.node         import Node
+from rclpy.qos          import QoSProfile, DurabilityPolicy
+from std_msgs.msg       import Float64
+
+
+
 from cs133a_project.TransformHelpers import *
-from cs133a_project.joint_info import ATLAS_PADDLE_DIMENSION
 
 #
 #   Trajectory Generator Node Class
@@ -66,10 +82,18 @@ class ProjectNode:
     def __init__(self, rate, Trajectory):
         self.robot_node = RobotNode('robot', rate, Trajectory)
         self.ball_node = BallNode('ball', rate)
+        self.gui_node = GUINode('float', self.robot_node.trajectory.x_r_arm[2, 0])
 
         self.robot_node.ball_r = self.ball_node.radius
 
     def start(self):
+        robot_thread = threading.Thread(target=self.run_robot)
+        robot_thread.start()
+
+        self.gui_node.run()
+        robot_thread.join()
+
+    def run_robot(self):
         while rclpy.ok():
             rclpy.spin_once(self.ball_node)
 
@@ -77,6 +101,8 @@ class ProjectNode:
             self.robot_node.ball_p = self.ball_node.p
             self.robot_node.ball_v = self.ball_node.v
             self.robot_node.ball_a = self.ball_node.a
+
+            self.robot_node.trajectory.x_r_arm[2, 0] = self.gui_node.getvalue()
 
             if self.robot_node.collision.collision_bool:
                 self.robot_node.trajectory.recalculate()
@@ -88,6 +114,7 @@ class ProjectNode:
     def shutdown(self):
         self.ball_node.shutdown()
         self.robot_node.shutdown()
+        self.gui_node.destroy_node()
         rclpy.shutdown()
 
 class RobotNode(Node):
@@ -291,3 +318,104 @@ class BallNode(Node):
         self.marker.header.stamp  = now.to_msg()
         self.marker.pose.position = Point_from_p(self.p)
         self.pub.publish(self.mark)
+
+#
+#  GUI Slider Class
+#
+class VarGUI(QWidget):
+    def __init__(self, val, callback):
+        super().__init__()
+        name   = 'Right Arm z Position'
+        minval = 1
+        maxval =  1.7
+        self.value    = val
+        self.offset   = (maxval + minval) / 2.0
+        self.slope    = (maxval - minval) / 200.0
+        self.callback = callback
+        self.initUI(name)
+
+    def initUI(self, name):
+        # Top-Left: Name
+        label = QLabel(name)
+        label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        label.setMinimumWidth(40)
+
+        # Top-Right: Number
+        self.number = QLabel("%6.3f" % self.value)
+        self.number.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.number.setMinimumWidth(100)
+        self.number.setStyleSheet("border: 1px solid black;")
+
+        # Bottom: Slider
+        slider = QSlider(Qt.Horizontal)
+        slider.setRange(-100, 100)
+        slider.setFocusPolicy(Qt.NoFocus)
+        slider.setPageStep(5)
+        slider.valueChanged.connect(self.valueHandler)
+        slider.setValue(int((self.value - self.offset)/self.slope))
+
+        # Create the Layout
+        hbox = QHBoxLayout()
+        hbox.addWidget(label)
+        hbox.addSpacing(10)
+        hbox.addWidget(self.number)
+
+        vbox = QVBoxLayout()
+        vbox.addLayout(hbox)
+        vbox.addWidget(slider)
+
+        self.setLayout(vbox)
+        self.setWindowTitle('Right Arm z Position')
+        self.show()
+
+    def valueHandler(self, value):
+        self.value = self.offset + self.slope * float(value)
+        self.number.setText("%6.3f" % self.value)
+        self.callback(self.value)
+
+    def kill(self, signum, frame):
+        self.close()
+
+#
+#   GUI Node Class
+#
+class GUINode(Node):
+    # Initialization.
+    def __init__(self, name, initvalue):
+        # Initialize the node, naming it as specified
+        super().__init__(name)
+
+        # Create the float message.
+        self.float = Float64()
+        self.setvalue(initvalue)
+
+    # Run
+    def run(self):
+        # Prepare Qt.
+        app = QApplication(sys.argv)
+        app.setApplicationDisplayName("Float Publisher")
+
+        # Include a Qt Timer, setup up so every 500ms the python
+        # interpreter runs (doing nothing).  This enables the ctrl-c
+        # handler to be processed and close the window.
+        timer = QTimer()
+        timer.start(500)
+        timer.timeout.connect(lambda: None)
+
+        # Then setup the GUI window.  And declare the ctrl-c handler to
+        # close that window.
+        gui = VarGUI(self.getvalue(), self.setvalue)
+        signal.signal(signal.SIGINT, gui.kill)
+
+        # Start the GUI window.
+        self.get_logger().info("GUI starting...")
+        status = app.exec_()
+        self.get_logger().info("GUI ended.")
+
+    # Get/Set the value.
+    def getvalue(self):
+        # Get the value.
+        return self.float.data
+    def setvalue(self, value):
+        # Set the value.
+        self.float.data = value
