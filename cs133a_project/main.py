@@ -80,7 +80,7 @@ class Trajectory():
         # Return a list of joint names FOR THE EXPECTED URDF!
         return ATLAS_JOINT_NAMES
             
-    def weighted_svd_inverse(self, J, gamma=0.1):
+    def weighted_svd_inverse(self, J, gamma=0.01):
         U, S, V = np.linalg.svd(J)
 
         msk = np.abs(S) >= gamma
@@ -205,7 +205,9 @@ class Trajectory():
         e_arm = np.vstack((e_p_arm, e_R_arm))
 
         J = np.vstack((J_leg, J_arm))
-        xdot = np.vstack((vd, wd, e_arm * 0.1))
+        xdot = np.vstack((vd, wd, e_arm * 0.001))
+
+        print(J.shape)
 
         e = np.vstack((ep(pdlast_r, p_l_r), eR(Rdlast_r, R_l_r), e_arm))
         J_inv = self.weighted_svd_inverse(J)
