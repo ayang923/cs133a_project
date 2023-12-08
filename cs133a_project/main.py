@@ -42,9 +42,11 @@ class Trajectory():
         self.r_leg_chain = KinematicChain(self.node, 'pelvis', 'r_foot_paddle', ATLAS_R_LEG_JOINT_NAMES)
         self.r_arm_chain = KinematicChain(self.node, 'pelvis', 'r_hand', ATLAS_R_ARM_JOINT_NAMES)
 
+        self.head_chain = KinematicChain(self.node, 'pelvis', "head", ATLAS_HEAD_JOINT_NAMES)
 
         self.q0_leg = np.zeros((len(ATLAS_L_LEG_JOINT_NAMES), 1))
         self.q0_arm = np.zeros((len(ATLAS_R_ARM_JOINT_NAMES), 1))
+        self.q0_head = np.zeros((1, 1)) # only neck is not duplicate
 
         # initial positions, in world frame
         self.x0_l_leg = np.zeros((3, 1)) # world frame
@@ -60,7 +62,7 @@ class Trajectory():
         self.xf_l_leg = None # world frame
         self.thetaf_l_leg = self.theta0_l_leg
 
-        self.q = np.vstack((self.q0_leg, self.q0_leg, self.q0_arm))
+        self.q = np.vstack((self.q0_leg, self.q0_leg, self.q0_arm, self.q0_head))
         self.pd = self.x0_l_leg
         self.Rd = Roty(self.theta0_l_leg)
 
@@ -153,7 +155,8 @@ class Trajectory():
             
         qlast_l_leg = self.q[:len(ATLAS_L_LEG_JOINT_NAMES), :]
         qlast_r_leg = self.q[len(ATLAS_L_LEG_JOINT_NAMES):len(ATLAS_L_LEG_JOINT_NAMES) + len(ATLAS_R_LEG_JOINT_NAMES), :]
-        qlast_r_arm = self.q[len(ATLAS_L_LEG_JOINT_NAMES) + len(ATLAS_R_LEG_JOINT_NAMES):, :]
+        qlast_r_arm = self.q[len(ATLAS_L_LEG_JOINT_NAMES) + len(ATLAS_R_LEG_JOINT_NAMES):len(ATLAS_L_LEG_JOINT_NAMES) + len(ATLAS_R_LEG_JOINT_NAMES) + len(ATLAS_R_ARM_JOINT_NAMES), :]
+        qlast_head = np.vstack((qlast_r_arm[:3, :], self.q[-1, :]))
 
         # position of right leg in pelvis frame
         p_r_pelvis, Rd_r_pelvis, _, _ = self.r_leg_chain.fkin(qlast_r_leg)
@@ -176,41 +179,57 @@ class Trajectory():
         # last pd and Rd wrt pelvis
         pdlast, Rdlast = self.convert_to_pelvis(self.pd, self.Rd)
         pdlast_arm, Rdlast_arm = self.convert_to_pelvis(self.x_r_arm, self.R_r_arm)
+        pdlast_head, Rdlast_head = self.convert_to_pelvis(self.node.ball_p, Reye())
 
         p_l, R_l, Jv_l, Jw_l = self.l_leg_chain.fkin(qlast_l_leg)
         p_r, R_r, Jv_r, Jw_r = self.r_leg_chain.fkin(qlast_r_leg)
-
         p_r_arm, R_r_arm, Jv_r_arm, Jw_r_arm = self.r_arm_chain.fkin(qlast_r_arm)
+
+        p_head, R_head, Jv_head, Jw_head = self.head_chain.fkin(qlast_head)
+
         pdlast_arm_r, Rdlast_arm_r = self.convert_to_r_leg(pdlast_arm, Rdlast_arm, p_r, R_r)
         p_r_arm_r, R_r_arm_r = self.convert_to_r_leg(p_r_arm, R_r_arm, p_r, R_r)
-
         # last pd and Rd wrt right leg
         pdlast_r, Rdlast_r = self.convert_to_r_leg(pdlast, Rdlast, p_r, R_r)
         # last computed p_l and R_l wrt right leg
         p_l_r, R_l_r = self.convert_to_r_leg(p_l, R_l, p_r, R_r)
 
+        pdlast_head_r, Rdlast_head_r = self.convert_to_r_leg(pdlast_head, Rdlast_head, p_r, R_r)
+        p_head_r, R_head_r = self.convert_to_r_leg(p_head, R_head, p_r, R_r)
+
         J_arms_zeros = np.zeros((3, len(ATLAS_R_ARM_JOINT_NAMES)))
         J_legs_zeros = np.zeros((3, len(ATLAS_L_LEG_JOINT_NAMES)))
+        J_head_zeros = np.zeros((3, 1)) # only neck
 
         # leg jacobian
-        Jv_leg = R_r.T @ (np.hstack((Jv_l, -Jv_r, J_arms_zeros)) + crossmat(p_l - p_r) @ np.hstack((J_legs_zeros, Jw_r, J_arms_zeros)))
-        Jw_leg = R_r.T @ (np.hstack((Jw_l, -Jw_r, J_arms_zeros)))
+        Jv_leg = R_r.T @ (np.hstack((Jv_l, -Jv_r, J_arms_zeros, J_head_zeros)) + crossmat(p_l - p_r) @ np.hstack((J_legs_zeros, Jw_r, J_arms_zeros, J_head_zeros)))
+        Jw_leg = R_r.T @ (np.hstack((Jw_l, -Jw_r, J_arms_zeros, J_head_zeros)))
         J_leg = np.vstack((Jv_leg, Jw_leg))
 
         # arm jacobian
-        Jv_arm = R_r.T @ (np.hstack((J_legs_zeros, -Jv_r, Jv_r_arm)) + crossmat(p_r_arm - p_r) @ np.hstack((J_legs_zeros, Jw_r, J_arms_zeros)))
-        Jw_arm = R_r.T @ np.hstack((J_legs_zeros, -Jw_r, Jw_r_arm))
+        Jv_arm = R_r.T @ (np.hstack((J_legs_zeros, -Jv_r, Jv_r_arm, J_head_zeros)) + crossmat(p_r_arm - p_r) @ np.hstack((J_legs_zeros, Jw_r, J_arms_zeros, J_head_zeros)))
+        Jw_arm = R_r.T @ np.hstack((J_legs_zeros, -Jw_r, Jw_r_arm, J_head_zeros))
         J_arm = np.vstack((Jv_arm, Jw_arm))
+
+        # head jacobian
+        Jv_head = (R_r.T @ (np.hstack((J_legs_zeros, -Jv_r, Jv_head[:, :3], J_arms_zeros[:, 3:], Jv_head[:, -1:])) + crossmat(p_head - p_r) @ np.hstack((J_legs_zeros, Jw_r, J_arms_zeros, J_head_zeros))))[:-1, :]
+        Jw_head = (R_r.T @ np.hstack((J_legs_zeros, -Jw_r, Jw_head[:, :3], J_arms_zeros[:, 3:], Jw_head[:, -1:])))
+        J_head = np.vstack((Jv_head, Jw_head))
 
         # error vector for arm
         e_p_arm = ep(pdlast_arm_r, p_r_arm_r)
         e_R_arm = eR(Rdlast_arm_r, R_r_arm_r)
-        e_arm = np.vstack((e_p_arm, e_R_arm))        
+        e_arm = np.vstack((e_p_arm, e_R_arm))
 
-        J = np.vstack((J_leg, J_arm))
-        xdot = np.vstack((vd, wd, e_arm * 0.001))
+        # error vector for head
+        e_p_head = ep(pdlast_head_r[:-1, :], p_head_r[:-1, :])
+        e_R_head = eR(Rdlast_head_r, R_head_r)
+        e_head = np.vstack((e_p_head, e_R_head))   
 
-        e = np.vstack((ep(pdlast_r, p_l_r), eR(Rdlast_r, R_l_r), e_arm))
+        J = np.vstack((J_leg, J_arm, J_head))
+        xdot = np.vstack((vd, wd, e_arm * 0.001, np.zeros((5, 1))))
+
+        e = np.vstack((ep(pdlast_r, p_l_r), eR(Rdlast_r, R_l_r), e_arm, np.zeros((5, 1))))
         J_inv = self.weighted_svd_inverse(J)
 
         # secondary task of joint limits
@@ -225,7 +244,7 @@ class Trajectory():
         qdot_leg_goal = np.vstack((np.pi/q_l_leg_goal_interval*(q_l_leg_goal - qlast_l_leg), np.pi/q_r_leg_goal_interval*(q_r_leg_goal - qlast_r_leg)))
         qdot_arm_goal = np.pi/q_arm_goal_interval * (q_arm_goal - qlast_r_arm)
 
-        qdot_goal = np.vstack((qdot_leg_goal, qdot_arm_goal))
+        qdot_goal = np.vstack((qdot_leg_goal, qdot_arm_goal, np.zeros((1, 1))))
 
         qdot = J_inv @ (xdot + 10*e - J @ qdot_goal) + qdot_goal
         q = self.q + dt*qdot
@@ -233,8 +252,8 @@ class Trajectory():
         self.q = q
         self.pd, self.Rd = pd_world, Rd_world
 
-        q_dict = dict(zip(ATLAS_L_LEG_JOINT_NAMES + ATLAS_R_LEG_JOINT_NAMES + ATLAS_R_ARM_JOINT_NAMES, q.flatten()))
-        qdot_dict = dict(zip(ATLAS_L_LEG_JOINT_NAMES + ATLAS_R_LEG_JOINT_NAMES + ATLAS_R_ARM_JOINT_NAMES, qdot.flatten()))
+        q_dict = dict(zip(ATLAS_L_LEG_JOINT_NAMES + ATLAS_R_LEG_JOINT_NAMES + ATLAS_R_ARM_JOINT_NAMES + [ATLAS_HEAD_JOINT_NAMES[-1]], q.flatten()))
+        qdot_dict = dict(zip(ATLAS_L_LEG_JOINT_NAMES + ATLAS_R_LEG_JOINT_NAMES + ATLAS_R_ARM_JOINT_NAMES + [ATLAS_HEAD_JOINT_NAMES[-1]], qdot.flatten()))
 
         q = np.array([q_dict[joint_name] if joint_name in q_dict else 0 for joint_name in self.jointnames()])
         qdot = np.array([qdot_dict[joint_name] if joint_name in q_dict else 0 for joint_name in self.jointnames()])

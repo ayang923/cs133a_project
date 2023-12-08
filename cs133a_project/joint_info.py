@@ -64,6 +64,13 @@ ATLAS_R_ARM_JOINT_NAMES = [
     "r_arm_wry2"
 ]
 
+ATLAS_HEAD_JOINT_NAMES = [
+    "back_bkz",
+    "back_bky",
+    "back_bkx",
+    "neck_ry"
+]
+
 ATLAS_ARM_JOINT_CONSTRAINTS = np.array([
     [-np.pi/2, np.pi/2],
     [-np.pi/2, np.pi/2],
