@@ -115,7 +115,7 @@ class Trajectory():
         self.T = T_up + T_down
 
         self.xf_l_leg = self.node.ball_p + self.node.ball_v * self.T + 1/2*self.node.ball_a * self.T**2
-        self.thetaf_l_leg = np.random.uniform(-0.01, 0.01)
+        self.thetaf_l_leg = np.random.uniform(-0.05, 0.05)
 
     def check_touching(self, pd, Rd):
         # transform ball into foot coordinates
